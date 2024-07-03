@@ -1,0 +1,53 @@
+name: Go Pipe
+
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.4'
+      
+      - name: Go test
+        run: GOOS=linux GOARCH=amd64 go test -v ./... 
+
+      - name: Go vet
+        run: go vet -v ./...
+
+  deploy-to-github:
+    name: Push Docker image to Github container registry
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    needs: test
+    if: startsWith(github.ref, 'refs/tags') #&& contains(github.ref, 'refs/heads/main')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Github container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: ghcr.io/${{ github.repository }}    
+
+      - name: Build and push Docker Inage
+        uses: docker/build-push-action@v6.3.0
+        with:
+          context: .
+          push: true
+          tags:  ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
